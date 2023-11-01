@@ -436,6 +436,7 @@ if len(sys.argv)==3:
 
                 state_tensor=torch.tensor(stringStateToIntState(state),dtype=torch.float32,device=device).unsqueeze(0)
                 action_tensor=agent.select_action(state_tensor)
+                print(action_tensor.item())
 
                 action = actionShuffle[action_tensor.item()]
                 reward, next_state, done, velocity = env.transition(action)
