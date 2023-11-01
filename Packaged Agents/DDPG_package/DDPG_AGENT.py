@@ -177,7 +177,7 @@ class Actor(nn.Module):
     """
     def __init__(self, n_states, action_dim, hidden1):
         super(Actor, self).__init__()
-        self.epsilon = 0.3
+        self.epsilon = 0.1
         self.net = nn.Sequential(
             nn.Linear(n_states, hidden1),
             nn.ReLU(),
