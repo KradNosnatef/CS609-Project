@@ -5,71 +5,68 @@ from tqdm import tqdm
 import pickle
 
 np.set_printoptions(precision=3)
-
-class Agent:
-    def __init__(self):
-        pass
-    
-    def act(self, state):
-        # Simple-minded agent that always selects action 1
-        return 1
-
+        
+        
 class Car:
     def __init__(self, tyre="Intermediate"):
         self.default_tyre = tyre
         self.possible_tyres = ["Ultrasoft", "Soft", "Intermediate", "Fullwet"]
         self.pitstop_time = 23
-        self.fuel_capacity = 100.0  # Maximum fuel capacity
+        self.fuel_capacity = 100.0  # Maximum fuel capacity  
         self.fuel_consumption_rate = 0.01  # Fuel consumption rate per unit distance
-        self.reset()
-
+        self.refill = 20
+        self.combine = 40
+        self.reset()    
+    
     def reset(self):
         self.change_tyre(self.default_tyre)
         self.fuel_level = self.fuel_capacity
-        
+    
     def degrade(self, w, r):
         if self.tyre == "Ultrasoft":
-            self.condition *= (1 - 0.0050 * w - (2500 - r) / 90000)
+            self.condition *= (1 - 0.0050*w - (2500-r)/90000)
         elif self.tyre == "Soft":
-            self.condition *= (1 - 0.0051 * w - (2500 - r) / 93000)
+            self.condition *= (1 - 0.0051*w - (2500-r)/93000)
         elif self.tyre == "Intermediate":
-            self.condition *= (1 - 0.0052 * abs(0.5 - w) - (2500 - r) / 95000)
+            self.condition *= (1 - 0.0052*abs(0.5-w) - (2500-r)/95000)
         elif self.tyre == "Fullwet":
-            self.condition *= (1 - 0.0053 * (1 - w) - (2500 - r) / 97000)
+            self.condition *= (1 - 0.0053*(1-w) - (2500-r)/97000)
+        
         
     def change_tyre(self, new_tyre):
-        # Change car's tires
         assert new_tyre in self.possible_tyres
         self.tyre = new_tyre
-        self.condition = 1.0
+        self.condition = 1.00
+    
     
     def get_velocity(self, driving_style):
-        # Calculate car velocity based on tire, condition, fuel level, and driving style
-        base_velocity = 0
         if self.tyre == "Ultrasoft":
-            base_velocity = 80.7
+            vel = 80.7
         elif self.tyre == "Soft":
-            base_velocity = 80.1
+            vel = 80.1
         elif self.tyre == "Intermediate":
-            base_velocity = 79.5
+            vel = 79.5
         elif self.tyre == "Fullwet":
-            base_velocity = 79.0
-        
-        # Adjust velocity based on fuel level and driving style
+            vel = 79.0
+            
+         # Adjust velocity based on fuel level and driving style
         if driving_style == 1:
-            velocity = base_velocity * (0.8 * self.condition ** 1.5) * (self.fuel_level / self.fuel_capacity)
+            velocity = vel * (0.8 * self.condition ** 1.5) * ((self.fuel_capacity / self.fuel_level)/10)
         elif driving_style == 2:
-            velocity = base_velocity * (0.6 * self.condition ** 1.5) * (self.fuel_level / self.fuel_capacity)
+            velocity = vel * (0.6 * self.condition ** 1.5) * ((self.fuel_capacity / self.fuel_level)/10)
         elif driving_style == 3:
-            velocity = base_velocity * (0.4 * self.condition ** 1.5) * (self.fuel_level / self.fuel_capacity)
+            velocity = vel * (0.4 * self.condition ** 1.5) * ((self.fuel_capacity / self.fuel_level)/10)  
+            
         return velocity
     
 
 class Track:
-    def __init__(self, car=Car(), driving_style=1, agent_risk_level=0.1):
+    def __init__(self, car=Car(), driving_style=1):
+        # self.radius and self.cur_weather are defined in self.reset()
         self.total_laps = 162
         self.car = car
-        self.driving_style = driving_style
+        self.driving_style = driving_style 
+        self.possible_driving_styles = [1, 2, 3]
         self.possible_weather = ["Dry", "20% Wet", "40% Wet", "60% Wet", "80% Wet", "100% Wet"]
         self.wetness = {
             "Dry": 0.00, "20% Wet": 0.20, "40% Wet": 0.40, "60% Wet": 0.60, "80% Wet": 0.80, "100% Wet": 1.00
@@ -94,109 +91,134 @@ class Track:
                 "Dry": 0.000, "20% Wet": 0.000, "40% Wet": 0.000, "60% Wet": 0.000, "80% Wet": 0.012, "100% Wet": 0.988
             }
         }
-        self.crash_probability = 0
-        self.agent_risk_level = agent_risk_level  # Store the agent's risk level as an instance attribute
+        self.crash_probability = 0.001
         self.reset()
-
+    
+    
     def reset(self):
-        self.radius = np.random.randint(600, 1201)
+        self.radius = np.random.randint(600,1201)
         self.cur_weather = np.random.choice(self.possible_weather)
         self.is_done = False
         self.pitstop = False
+        self.fill = False
+        self.combine = False
         self.laps_cleared = 0
         self.car.reset()
-        self.agent_fuel_style = 1  # Adjust this based on the agent's preferred fuel management style
-        self.fuel_management_actions = {1: 0.8, 2: 0.6, 3: 0.4}  # Adjust based on desired fuel consumption for each style
         return self._get_state()
-
+    
+    
     def _get_state(self):
-        return [self.car.tyre, self.car.condition, self.car.fuel_level, self.cur_weather, self.radius, self.laps_cleared, self.car.fuel_capacity]
-
+        return [self.car.tyre, self.car.condition, self.cur_weather, self.radius, self.laps_cleared]
+    
+    def calculate_crash_probability(self, velocity, driving_style):
+        # Calculate crash probability based on velocity, wetness, and driving style
+        crash_probability = 0.01 * (velocity - 80) + 0.005 * self.wetness[self.cur_weather] + self.laps_cleared * 0.0000001
+    
+        # Adjust the crash probability based on driving style
+        if driving_style == 2:
+            crash_probability *= 1.002  #djustment for a more aggressive driving style
+        elif driving_style == 3:
+            crash_probability *= 1.002  #adjustment for a more cautious driving style
+    
+        return crash_probability
+        
+    
     def transition(self, action=0):
+        """
+        Args:
+            action (int):
+                0. Make a pitstop and fit new ‘Ultrasoft’ tyres withot fill
+                1. Make a pitstop and fit new ‘Soft’ tyres withot fill
+                2. Make a pitstop and fit new ‘Intermediate’ tyres withot fill
+                3. Make a pitstop and fit new ‘Fullwet’ tyres withot fill
+                4. Continue the next lap without changing tyres and withot fill
+                5. Continue the next lap without changing tyres but fill
+                6. Make a pitstop and fit new ‘Ultrasoft’ tyres and fill
+                7. Make a pitstop and fit new ‘Soft’ tyres and fill
+                8. Make a pitstop and fit new ‘Intermediate’ tyres and fill
+                9. Make a pitstop and fit new ‘Fullwet’ tyres and fill
+        """
+        ## Pitstop time will be added on the first eight of the subsequent lap
         time_taken = 0
-
-        # Check for pitstops and refueling
         if self.laps_cleared == int(self.laps_cleared):
             if self.pitstop:
                 self.car.change_tyre(self.committed_tyre)
-                time_taken += self.pitstop_time["ChangeTire"]
-
-                if action % 2 == 1:  # If the action is odd, it's a refuel action
-                    time_taken += self.pitstop_time["Refuel"]
-
-                    # Check if the agent chose to refuel and change tires at the same time
-                    if action // 2 * 2 != action:
-                        reward = -40  # Agent chose both actions simultaneously
-                    else:
-                        reward = -20  # Agent only refueled
-                else:
-                    # Agent chose to change tires but not refuel
-                    reward = -20
+                time_taken += self.car.pitstop_time
+                self.pitstop = False
+            if self.fill:
+                self.car.fuel_level = self.car.fuel_capacity
+                time_taken += self.car.refill
+                self.fill = False
+            if self.combine:
+                self.car.change_tyre(self.committed_tyre)
+                self.car.fuel_level = self.car.fuel_capacity
+                time_taken += self.car.combine
+                self.combine = False
+                
+                
+        ## The environment is coded such that only an action taken at the start of the three-quarters mark of each lap matters
+        if self.laps_cleared - int(self.laps_cleared) == 0.75:
+            if action < 4:
+                self.pitstop = True
+                self.fill = False
+                self.combine = False
+                self.committed_tyre = self.car.possible_tyres[action]
+            elif action == 4:
+                self.pitstop = False
+                self.fill = False
+                self.combine = False
+            elif action == 5:
+                self.pitstop = False
+                self.fill = True
+                self.combine = False
             else:
-                # Agent did not choose to change tires or refuel
-                reward = -20
-        else:
-            # Agent is not at the pitstop, continue with normal actions
-            reward = 0
-            
-            
-        # Update weather conditions
-        self.cur_weather = np.random.choice(
-            self.possible_weather, p=list(self.p_transition[self.cur_weather].values())
-        )
-
+                self.pitstop = False
+                self.fill = False
+                self.combine = True
+                self.committed_tyre = self.car.possible_tyres[action-6]              
+                
         # Calculate distance traveled and velocity
         velocity = self.car.get_velocity(self.driving_style)  # Use the predefined driving style
         distance = (2 * np.pi * self.radius / 8)
+        
+        
+                 # Check for crash event
+        if np.random.random() < self.crash_probability:
+            reward = -1000000
+            return reward, 'crash' , True, 0  # Implement a massive negative reward for crashing
+        
+        # Add a check to avoid division by zero
+        if velocity > 0:
+            time_taken += distance / velocity
+        else:
+            reward = -1000000  # You can choose a default time increment when velocity is zero or negative
+            return reward, 'stop' , True, 0
 
         # Calculate crash probability based on velocity and wetness
         self.crash_probability = self.calculate_crash_probability(velocity, self.driving_style)
 
         # Adjust crash probability based on driving style and fuel level
-        if self.agent_fuel_style == 2:
+        if self.driving_style == 2:
             self.crash_probability += 0.02  # Example adjustment for a more aggressive driving style
-        elif self.agent_fuel_style == 3:
+        elif self.driving_style == 3:
             self.crash_probability -= 0.02  # Example adjustment for a more cautious driving style
-
-        # Check for crash event
-        if np.random.random() < self.crash_probability:
-            return -1000, None, True, 0  # Implement a massive negative reward for crashing
-
-        # Add a check to avoid division by zero
-        if velocity > 0:
-            time_taken += distance / velocity
-        else:
-            time_taken += 1.0  # You can choose a default time increment when velocity is zero or negative
-
+            
+       
         # Apply degradation and fuel consumption
         self.car.degrade(w=self.wetness[self.cur_weather], r=self.radius)
-        fuel_consumed = distance * self.car.fuel_consumption_rate * self.fuel_management_actions[self.agent_fuel_style]
-        self.car.fuel_level -= fuel_consumed
-
+        fuel_consumed = distance * self.car.fuel_consumption_rate 
+        self.car.fuel_level -= fuel_consumed        
+        
         reward = 0 - time_taken
-
-        # Implement crash-related rewards based on agent's risk level
-        reward -= self.agent_risk_level * reward
-
-        # Implement rewards/penalties based on fuel efficiency
-        if fuel_consumed > 0:
-            reward -= fuel_consumed
-
+        self.laps_cleared += 0.125
+        
         # Check if the race is finished
         if self.laps_cleared == self.total_laps:
-            return reward, None, True, 0  # Race is finished
+            self.is_done = True
 
+        if np.random.rand() < 0.05:
+            self.driving_style = np.random.choice(self.possible_driving_styles)
+
+        
         next_state = self._get_state()
-        return reward, next_state, False, velocity
-
-    def calculate_crash_probability(self, velocity, driving_style):
-        # Calculate crash probability based on velocity, wetness, and driving style
-        crash_probability = 0.01 * (velocity - 80) + 0.05 * self.wetness[self.cur_weather]
-    
-        # Adjust the crash probability based on driving style
-        if driving_style == 2:
-            crash_probability += 0.02  #djustment for a more aggressive driving style
-        elif driving_style == 3:
-            crash_probability -= 0.02  #adjustment for a more cautious driving style
-    
-        return crash_probability
+        return reward, next_state, self.is_done, velocity
