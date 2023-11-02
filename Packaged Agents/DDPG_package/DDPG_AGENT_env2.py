@@ -200,7 +200,7 @@ class Actor(nn.Module):
         
         softmax_output = torch.softmax(output, dim=1)
         if np.random.uniform(0,1) < self.epsilon:
-            choice = torch.randint(low=0, high=10,size=())
+            choice = torch.randint(low=0, high=9,size=())
         else:
             choice = torch.argmax(softmax_output)
         return choice
